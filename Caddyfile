@@ -1,0 +1,44 @@
+{
+    frankenphp
+    http_port 80
+}
+
+:80 {
+    root * /var/www
+    encode zstd gzip
+
+    # Manejo de error 404
+    handle_errors {
+        rewrite * /_incl/404.php
+        php_server
+    }
+
+    route {
+        # 1. Lógica para el Proxy CCTV con Regex
+        @cctv path_regexp cam ^/domotica/cctv/([A-Za-z0-9_-]+)$
+        handle @cctv {
+            # Aquí podrías añadir un middleware de auth si fuera necesario,
+            # pero para el proxy directo:
+            reverse_proxy frigate:5000 {
+                rewrite /api/{re.cam.1}
+                flush_interval -1
+                header_down Cache-Control "no-store"
+            }
+        }
+
+        # 2. Interceptación para X-Accel-Redirect (Servir archivos protegidos)
+        intercept {
+            @accel header X-Accel-Redirect *
+            handle_response @accel {
+                root * /DATA
+                rewrite * {resp.header.X-Accel-Redirect}
+                method * GET
+                header -X-Accel-Redirect
+                file_server
+            }
+        }
+
+        # 3. Servidor PHP y fallback
+        php_server
+    }
+}
