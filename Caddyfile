@@ -12,19 +12,67 @@
         rewrite * /_incl/404.php
         php_server
     }
+    handle_path /cms* {
 
+        root * /var/www/cms
+        php_fastcgi unix//run/php/php-fpm.sock
+        file_server
+
+        # -------------------------------
+        # Headers de seguridad
+        # -------------------------------
+        header {
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+
+        # -------------------------------
+        # Bloqueos de seguridad
+        # -------------------------------
+        @blockedFiles {
+            path_regexp blocked \.(inc|info|module|sh|sql|bak|conf|dist|log|orig|swp|swo|json|lock)$
+        }
+        respond @blockedFiles 403
+
+        @hiddenFiles {
+            path_regexp hidden ^/\.(?!well-known)
+        }
+        respond @hiddenFiles 403
+
+        @pwRestricted {
+            path_regexp pw (
+                ^/(site|site-[^/]+)/assets/(cache|logs|backups|sessions|config|install|tmp)|
+                ^/(site|site-[^/]+)/install|
+                ^/(wire|site|site-[^/]+)/(config|index\.config|config-dev)\.php|
+                ^/(site|site-[^/]+)/templates/.*\.(php|tpl|inc)|
+                ^/(site|site-[^/]+)/classes|
+                ^/(site|site-[^/]+)/assets/.*\.php
+            )
+        }
+        respond @pwRestricted 403
+
+        # -------------------------------
+        # Fallback (equivalente Rewrite)
+        # -------------------------------
+        @notFile {
+            not file
+            not path /favicon.ico /robots.txt
+        }
+
+        rewrite @notFile /index.php?it={path}
+    }
     route {
         # 1. Lógica para el Proxy CCTV con Regex
-        @cctv path_regexp cam ^/domotica/cctv/([A-Za-z0-9_-]+)$
-        handle @cctv {
-            # Aquí podrías añadir un middleware de auth si fuera necesario,
-            # pero para el proxy directo:
-            reverse_proxy frigate:5000 {
-                rewrite /api/{re.cam.1}
-                flush_interval -1
-                header_down Cache-Control "no-store"
-            }
-        }
+        #@cctv path_regexp cam ^/domotica/cctv/([A-Za-z0-9_-]+)$
+        #handle @cctv {
+        #    # Aquí podrías añadir un middleware de auth si fuera necesario,
+        #    # pero para el proxy directo:
+        #    reverse_proxy frigate:5000 {
+        #        rewrite /api/{re.cam.1}
+        #        flush_interval -1
+        #        header_down Cache-Control "no-store"
+        #    }
+        #}
 
         # 2. Interceptación para X-Accel-Redirect (Servir archivos protegidos)
         intercept {
